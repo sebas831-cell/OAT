@@ -11,7 +11,7 @@ import streamlit as st
 # CONFIGURACIÓN
 # ============================================================
 
-st.set_page_config(page_title="Dashboard Ejecutivo FEN 2026", page_icon="🌱", layout="wide")
+st.set_page_config(page_title="Dashboard Ejecutivo FEN 2026 - UAT", page_icon="🌱", layout="wide")
 
 CARPETA = Path(__file__).parent
 ARCHIVO = CARPETA / "datos_fen_2026.xlsx"
