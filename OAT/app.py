@@ -68,6 +68,10 @@ div[data-testid="stSidebarCollapsedControl"] {display: none;}
 .kpi-valor {color: #14532D; font-size: 30px; font-weight: 800; margin-top: 4px; line-height: 1.1;}
 .kpi-sub {color: #64748B; font-size: 12px; margin-top: 4px;}
 .lider {color: #14532D; font-size: 17px; font-weight: 800; margin-top: 6px; line-height: 1.2; min-height: 40px;}
+.kpi.alta {height: 215px; position: relative; box-sizing: border-box;}
+.kpi.alta .kpi-titulo {min-height: 30px;}
+.kpi.alta .pbar {position: absolute; left: 18px; right: 18px; bottom: 44px; margin: 0;}
+.kpi.alta .kpi-sub {position: absolute; left: 18px; right: 18px; bottom: 14px; margin: 0;}
 .pbar {background: #E2E8F0; border-radius: 6px; height: 8px; margin-top: 8px;}
 .pbar > div {background: var(--c, #16A34A); height: 8px; border-radius: 6px;}
 .seccion {font-size: 19px; font-weight: 800; color: #14532D;
@@ -249,7 +253,7 @@ def kpi(titulo, valor, sub, color, barra=None):
 
 def tarjeta_lider(titulo, nombre, valor_txt, sub, color, barra=None):
     b = f'<div class="pbar"><div style="width:{min(barra, 100):.0f}%"></div></div>' if barra is not None else ""
-    return (f'<div class="kpi" style="--c:{color}"><div class="kpi-titulo">{titulo}</div>'
+    return (f'<div class="kpi alta" style="--c:{color}"><div class="kpi-titulo">{titulo}</div>'
             f'<div class="lider">{nombre}</div><div class="kpi-valor">{valor_txt}</div>{b}'
             f'<div class="kpi-sub">{sub}</div></div>')
 
@@ -386,11 +390,12 @@ seccion("⭐ Lo más destacado")
 h = st.columns(5)
 if HAY_AV:
     p = pct(AV_T, PROG_T)
-    h[0].markdown(kpi("AVANCE GENERAL", f"{p:.1f}%",
-                      f"{AV_T:,.0f} de {PROG_T:,.0f} beneficiarios · al {FECHA_AV}", "#14532D", barra=p),
+    h[0].markdown(tarjeta_lider("AVANCE GENERAL", "Todo el proyecto", f"{p:.1f}%",
+                                f"{AV_T:,.0f} de {PROG_T:,.0f} · al {FECHA_AV}", "#14532D", barra=p),
                   unsafe_allow_html=True)
 else:
-    h[0].markdown(kpi("TOTAL DEL PROYECTO", f"{PROG_T:,.0f}", f"beneficiarios en {d['UBIGEO'].nunique():,} distritos", "#14532D"),
+    h[0].markdown(tarjeta_lider("TOTAL DEL PROYECTO", "Todo el proyecto", f"{PROG_T:,.0f}",
+                                f"beneficiarios en {d['UBIGEO'].nunique():,} distritos", "#14532D"),
                   unsafe_allow_html=True)
 
 COL_LID = [("DEPARTAMENTO", "DEPARTAMENTO", "#16A34A"), ("PROVINCIA_LBL", "PROVINCIA", "#4ADE80"),
