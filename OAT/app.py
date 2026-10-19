@@ -11,13 +11,15 @@ import streamlit as st
 # CONFIGURACIÓN
 # ============================================================
 
-st.set_page_config(page_title="Dashboard Ejecutivo FEN 2026 - UAT", page_icon="🌱", layout="wide")
+st.set_page_config(page_title="Dashboard Ejecutivo FEN 2026", page_icon="🌱", layout="wide")
 
 CARPETA = Path(__file__).parent
 ARCHIVO = CARPETA / "datos_fen_2026.xlsx"
 HOJA = "Hoja1"
 ARCHIVO_COORD = CARPETA / "coordenadas_distritos.xlsx"       # lat/lon por distrito
-ARCHIVOS_AVANCE = [CARPETA / "avance_fen_2026.xlsx", CARPETA / "avance_fen_2026.csv"]
+ARCHIVOS_AVANCE = [CARPETA / "plantilla_avance_fen_2026.xlsx",
+                   CARPETA / "avance_fen_2026.xlsx",
+                   CARPETA / "avance_fen_2026.csv"]
 
 NIVELES = ["DEPARTAMENTO", "PROVINCIA", "DISTRITO"]
 ETIQ_NIVEL = {"DEPARTAMENTO": "departamento", "PROVINCIA": "provincia", "DISTRITO": "distrito"}
@@ -41,6 +43,32 @@ COLOR_PROG_SUAVE = "#BAE6FD"  # programado (con avance encima)
 COLOR_AVANCE = "#16A34A"
 PLANTILLA = "plotly_white"
 ALTO = 520
+
+# Semáforo de cumplimiento (límite inferior, nombre, color relleno, color texto)
+SEMAFORO = [
+    (100, "Cumplido (≥100%)",   "#15803D", "#14532D"),
+    (70,  "Aceptable (70–99%)", "#84CC16", "#3F6212"),
+    (40,  "En riesgo (40–69%)", "#F59E0B", "#92400E"),
+    (0,   "Crítico (<40%)",     "#DC2626", "#991B1B"),
+]
+ORDEN_ESTADO = [s[1] for s in SEMAFORO]
+COLOR_ESTADO = {s[1]: s[2] for s in SEMAFORO}
+COLOR_TEXTO = {s[1]: s[3] for s in SEMAFORO}   # versión más oscura, legible sobre el mapa
+
+
+def estado(p):
+    for minimo, nombre, _, _ in SEMAFORO:
+        if p >= minimo:
+            return nombre
+    return SEMAFORO[-1][1]
+
+
+def leyenda_semaforo():
+    chips = "".join(
+        f'<span style="display:inline-flex;align-items:center;margin-right:16px;font-size:13px;color:#334155">'
+        f'<span style="width:12px;height:12px;border-radius:50%;background:{c};margin-right:6px"></span>{n}</span>'
+        for _, n, c, _ in SEMAFORO)
+    return f'<div style="margin:4px 0 8px 2px">{chips}</div>'
 
 
 def caja(nombre):
@@ -278,32 +306,46 @@ def mapa(res, key, seleccionable=True):
         st.info("No hay coordenadas disponibles para esta selección.")
         return None
     r["TAM"] = r["PROG"].clip(lower=1)
+    r["ESTADO"] = r["PCT"].map(estado)
     span = max(np.ptp(r["LAT"]), np.ptp(r["LON"]) * 0.7, 0.12) * 1.35
     zoom = float(np.clip(np.log2(675 / span), 4, 10.5))
     kw = dict(lat="LAT", lon="LON", size="TAM", size_max=38 if len(r) > 1 else 24,
               custom_data=["NOMBRE"], hover_name="NOMBRE", zoom=zoom,
               center=dict(lat=float(r["LAT"].mean()), lon=float(r["LON"].mean())),
               hover_data={"PROG": ":,.0f", "AV": ":,.0f", "PCT": ":.0f",
-                          "TAM": False, "LAT": False, "LON": False},
+                          "ESTADO": False, "TAM": False, "LAT": False, "LON": False},
               labels={"PROG": "Beneficiarios", "AV": "Avance", "PCT": "% avance"})
     if HAY_AV:
-        kw.update(color="PCT", range_color=[0, 100],
-                  color_continuous_scale=[[0, "#FDE68A"], [0.5, "#4ADE80"], [1, "#14532D"]])
+        kw.update(color="ESTADO", color_discrete_map=COLOR_ESTADO,
+                  category_orders={"ESTADO": ORDEN_ESTADO})
     else:
-        kw.update(color_discrete_sequence=[COLOR_PROG])
+        kw.update(color_discrete_sequence=[COLOR_PROG])   # sin avance no hay cumplimiento que medir
     if hasattr(px, "scatter_map"):
         fig = px.scatter_map(r, map_style="carto-positron", **kw)
     else:
         fig = px.scatter_mapbox(r, mapbox_style="carto-positron", **kw)
-    fig.update_traces(marker=dict(opacity=0.78))
+    fig.update_traces(marker=dict(opacity=0.8))
+
     if len(r) <= 16:
         try:
-            fig.update_traces(text=r["NOMBRE"].tolist(), mode="markers+text", textposition="top right")
+            if HAY_AV:
+                # Cada estado es una traza distinta: etiqueta y color propios por traza
+                for tr in fig.data:
+                    sub = r[r["ESTADO"] == tr.name]
+                    tr.text = (sub["NOMBRE"] + " · " + sub["PCT"].round(0).astype(int).astype(str) + "%").tolist()
+                    tr.mode = "markers+text"
+                    tr.textposition = "top right"
+                    tr.textfont = dict(color=COLOR_TEXTO.get(tr.name, "#14532D"), size=12)
+            else:
+                fig.update_traces(text=r["NOMBRE"].tolist(), mode="markers+text",
+                                  textposition="top right", textfont=dict(color="#075985", size=12))
         except Exception:
             pass
-    fig.update_layout(height=ALTO, margin=dict(t=10, b=0, l=0, r=0),
-                      coloraxis_showscale=HAY_AV, paper_bgcolor="#FFFFFF",
-                      coloraxis_colorbar=dict(title="% avance", thickness=12, len=0.5))
+
+    fig.update_layout(height=ALTO, margin=dict(t=10, b=0, l=0, r=0), paper_bgcolor="#FFFFFF",
+                      showlegend=HAY_AV,
+                      legend=dict(title="Cumplimiento", orientation="h", y=0.01, x=0.01,
+                                  bgcolor="rgba(255,255,255,.85)"))
     return chart(fig, key, seleccionable)
 
 
@@ -317,17 +359,20 @@ def ranking(res, titulo, key, seleccionable=True, colores=None):
     fig = go.Figure()
     marcador = (COLOR_PROG_SUAVE if HAY_AV
                 else ([colores.get(n, COLOR_PROG) for n in r["NOMBRE"]] if colores else COLOR_PROG))
+    color_txt = [COLOR_TEXTO[estado(q)] for q in r["PCT"]] if HAY_AV else "#334155"
     fig.add_bar(y=r["NOMBRE"], x=r["PROG"], orientation="h", name="Total",
                 marker_color=marcador, customdata=r["NOMBRE"], text=txt, textposition="outside",
-                cliponaxis=False, hovertemplate="<b>%{y}</b><br>Beneficiarios: %{x:,.0f}<extra></extra>")
+                cliponaxis=False, textfont=dict(color=color_txt),
+                hovertemplate="<b>%{y}</b><br>Beneficiarios: %{x:,.0f}<extra></extra>")
     if HAY_AV:
+        est = r["PCT"].map(estado)
         fig.add_bar(y=r["NOMBRE"], x=r["AV"], orientation="h", name="Avance",
-                    marker_color=COLOR_AVANCE, customdata=r["NOMBRE"],
+                    marker_color=[COLOR_ESTADO[e] for e in est], customdata=r["NOMBRE"],
                     hovertemplate="<b>%{y}</b><br>Avance: %{x:,.0f}<extra></extra>")
     fig.update_layout(
         template=PLANTILLA, barmode="overlay", height=ALTO, title=dict(text=titulo, font=dict(size=16, color="#14532D")),
         margin=dict(t=50, b=10, l=10, r=110), xaxis_title="Beneficiarios", yaxis_title=None,
-        showlegend=HAY_AV, legend=dict(orientation="h", y=1.07, x=1, xanchor="right"),
+        showlegend=False,   # el color del avance lo explica la leyenda del semáforo
         paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
     fig.update_yaxes(categoryorder="array", categoryarray=r["NOMBRE"].tolist())
     return chart(fig, key, seleccionable)
@@ -391,7 +436,8 @@ h = st.columns(5)
 if HAY_AV:
     p = pct(AV_T, PROG_T)
     h[0].markdown(tarjeta_lider("AVANCE GENERAL", "Todo el proyecto", f"{p:.1f}%",
-                                f"{AV_T:,.0f} de {PROG_T:,.0f} · al {FECHA_AV}", "#14532D", barra=p),
+                                f"{AV_T:,.0f} de {PROG_T:,.0f} · al {FECHA_AV}",
+                                COLOR_ESTADO[estado(p)], barra=p),
                   unsafe_allow_html=True)
 else:
     h[0].markdown(tarjeta_lider("TOTAL DEL PROYECTO", "Todo el proyecto", f"{PROG_T:,.0f}",
@@ -409,7 +455,8 @@ for i, (col, etiqueta, color) in enumerate(COL_LID, start=1):
         nombre = g.sort_values(["PCT", "PROG"], ascending=False).index[0]
         h[i].markdown(tarjeta_lider(f"{etiqueta} · MAYOR AVANCE", nombre.title() if col == "DEPARTAMENTO" else nombre,
                                     f"{top['PCT']:.0f}%",
-                                    f"{top['AV']:,.0f} de {top['PROG']:,.0f} · al {FECHA_AV}", color, barra=top["PCT"]),
+                                    f"{top['AV']:,.0f} de {top['PROG']:,.0f} · al {FECHA_AV}",
+                                    COLOR_ESTADO[estado(top["PCT"])], barra=top["PCT"]),
                       unsafe_allow_html=True)
     else:
         g = g.sort_values("PROG", ascending=False)
@@ -425,6 +472,8 @@ for i, (col, etiqueta, color) in enumerate(COL_LID, start=1):
 # ============================================================
 
 seccion("Explora el detalle · haz clic en un círculo o barra para profundizar")
+if HAY_AV:
+    st.markdown(leyenda_semaforo(), unsafe_allow_html=True)
 
 ruta = st.session_state.setdefault("ruta", [])
 
@@ -479,7 +528,7 @@ p_tot = sc["PROG"].sum() / PROG_T * 100
 s[0].markdown(kpi("BENEFICIARIOS", f"{sc['PROG'].sum():,.0f}", "en esta selección", "#0D9488"), unsafe_allow_html=True)
 if HAY_AV:
     s[1].markdown(kpi("AVANCE", f"{sc['AV'].sum():,.0f}", f"{p_sc:.1f}% de lo proyectado · al {FECHA_AV}",
-                      "#16A34A", barra=p_sc), unsafe_allow_html=True)
+                      COLOR_ESTADO[estado(p_sc)], barra=p_sc), unsafe_allow_html=True)
 else:
     s[1].markdown(kpi("PESO EN EL PROYECTO", f"{p_tot:.1f}%", "del total de beneficiarios", "#16A34A", barra=p_tot),
                   unsafe_allow_html=True)
@@ -541,6 +590,8 @@ with st.expander("🔎 Notas metodológicas y validaciones de datos", expanded=F
     st.markdown(
         "- **Beneficiarios:** unidades de atención de cada intervención (no necesariamente personas); se suman entre intervenciones (definición por validar).\n"
         "- **Praderas:** se aplica la regla 5 ha = 3 beneficiarios sobre la meta física.\n"
+        "- **Semáforo de cumplimiento:** Cumplido ≥100%, Aceptable 70–99%, En riesgo 40–69%, Crítico <40% "
+        "(avance ÷ beneficiarios proyectados). Solo se muestra cuando hay archivo de avance.\n"
         "- Las cifras del Excel se toman como resultados finales. El avance es opcional (archivo aparte)."
     )
     pr = d[d["KIT"] == "Praderas"]
