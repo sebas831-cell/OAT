@@ -404,7 +404,7 @@ def chart(fig, key, seleccionable):
 # ENCABEZADO
 # ============================================================
 
-sub_av = f"Avance reportado al {FECHA_AV}" if HAY_AV else "Resultados finales"
+sub_av = "Resultados finales · proyecto culminado"
 st.markdown(
     f"""<div class="banner"><div class="t">🌱 Dashboard Ejecutivo FEN 2026</div>
     <div class="s">Metas físicas y beneficiarios por intervención · {sub_av} · Datos actualizados al
@@ -417,7 +417,7 @@ st.markdown(
 # ============================================================
 
 PROG_T, AV_T = d["PROG"].sum(), d["AV"].sum()
-seccion("Alcance del proyecto")
+seccion("Resultados finales · alcance total del proyecto")
 k = st.columns(5)
 k[0].markdown(kpi("DEPARTAMENTOS", d["DEPARTAMENTO"].nunique(), "en el alcance del proyecto", "#14532D"), unsafe_allow_html=True)
 k[1].markdown(kpi("PROVINCIAS", d.groupby(["DEPARTAMENTO", "PROVINCIA"]).ngroups, "en el alcance del proyecto", "#16A34A"), unsafe_allow_html=True)
@@ -425,55 +425,18 @@ dist_av = d.loc[d["AV"] > 0, "UBIGEO"].nunique()
 k[2].markdown(kpi("DISTRITOS", f"{d['UBIGEO'].nunique():,}",
                   f"en el alcance · {dist_av:,} con avance" if HAY_AV else "en el alcance del proyecto",
                   "#4ADE80"), unsafe_allow_html=True)
-k[3].markdown(kpi("INTERVENCIONES", d["KIT"].nunique(), "tipos de kit del proyecto", "#A3E635"), unsafe_allow_html=True)
+k[3].markdown(kpi("INTERVENCIONES", d["KIT"].nunique(), "tipos en el proyecto", "#A3E635"), unsafe_allow_html=True)
 k[4].markdown(kpi("BENEFICIARIOS", f"{PROG_T:,.0f}", "total del proyecto", "#0D9488"), unsafe_allow_html=True)
 st.caption("ℹ️ Beneficiarios = unidades de atención de cada intervención (no necesariamente personas) y se "
            "suman entre intervenciones. Definición por validar con todos los involucrados.")
-
-# ---- Lo más destacado
-seccion("⭐ Lo más destacado")
-h = st.columns(5)
-if HAY_AV:
-    p = pct(AV_T, PROG_T)
-    h[0].markdown(tarjeta_lider("AVANCE GENERAL", "Todo el proyecto", f"{p:.1f}%",
-                                f"{AV_T:,.0f} de {PROG_T:,.0f} · al {FECHA_AV}",
-                                COLOR_ESTADO[estado(p)], barra=p),
-                  unsafe_allow_html=True)
-else:
-    h[0].markdown(tarjeta_lider("TOTAL DEL PROYECTO", "Todo el proyecto", f"{PROG_T:,.0f}",
-                                f"beneficiarios en {d['UBIGEO'].nunique():,} distritos", "#14532D"),
-                  unsafe_allow_html=True)
-
-COL_LID = [("DEPARTAMENTO", "DEPARTAMENTO", "#16A34A"), ("PROVINCIA_LBL", "PROVINCIA", "#4ADE80"),
-           ("DISTRITO_LBL", "DISTRITO", "#0D9488"), ("KIT", "INTERVENCIÓN", "#A3E635")]
-for i, (col, etiqueta, color) in enumerate(COL_LID, start=1):
-    g = d.groupby(col).agg(PROG=("PROG", "sum"), AV=("AV", "sum"))
-    g = g[g["PROG"] > 0]
-    if HAY_AV:
-        g["PCT"] = g["AV"] / g["PROG"] * 100
-        top = g.sort_values(["PCT", "PROG"], ascending=False).iloc[0]
-        nombre = g.sort_values(["PCT", "PROG"], ascending=False).index[0]
-        h[i].markdown(tarjeta_lider(f"{etiqueta} · MAYOR AVANCE", nombre.title() if col == "DEPARTAMENTO" else nombre,
-                                    f"{top['PCT']:.0f}%",
-                                    f"{top['AV']:,.0f} de {top['PROG']:,.0f} · al {FECHA_AV}",
-                                    COLOR_ESTADO[estado(top["PCT"])], barra=top["PCT"]),
-                      unsafe_allow_html=True)
-    else:
-        g = g.sort_values("PROG", ascending=False)
-        nombre, top = g.index[0], g.iloc[0]
-        share = top["PROG"] / g["PROG"].sum() * 100
-        h[i].markdown(tarjeta_lider(f"{etiqueta} · MÁS BENEFICIARIOS", nombre.title() if col == "DEPARTAMENTO" else nombre,
-                                    f"{share:.0f}%", f"{top['PROG']:,.0f} de {PROG_T:,.0f} beneficiarios del total",
-                                    color, barra=share), unsafe_allow_html=True)
-
 
 # ============================================================
 # 2. EXPLORACIÓN: CLIC PARA PROFUNDIZAR
 # ============================================================
 
-seccion("Explora el detalle · haz clic en un círculo o barra para profundizar")
-if HAY_AV:
-    st.markdown(leyenda_semaforo(), unsafe_allow_html=True)
+seccion("⭐ Resultados por territorio e intervención")
+st.caption("Selecciona un territorio o una intervención para conocer sus resultados. Haz clic en el mapa o las barras para profundizar.")
+st.markdown(leyenda_semaforo(), unsafe_allow_html=True)
 
 ruta = st.session_state.setdefault("ruta", [])
 
@@ -521,19 +484,20 @@ else:
     c_ir.empty()
     hijos = resumen(sc, "KIT")
 
-# Resumen de la selección
+# Indicadores reactivos de la selección actual.
 s = st.columns(4)
-p_sc = pct(sc["AV"].sum(), sc["PROG"].sum())
-p_tot = sc["PROG"].sum() / PROG_T * 100
-s[0].markdown(kpi("BENEFICIARIOS", f"{sc['PROG'].sum():,.0f}", "en esta selección", "#0D9488"), unsafe_allow_html=True)
-if HAY_AV:
-    s[1].markdown(kpi("AVANCE", f"{sc['AV'].sum():,.0f}", f"{p_sc:.1f}% de lo proyectado · al {FECHA_AV}",
-                      COLOR_ESTADO[estado(p_sc)], barra=p_sc), unsafe_allow_html=True)
-else:
-    s[1].markdown(kpi("PESO EN EL PROYECTO", f"{p_tot:.1f}%", "del total de beneficiarios", "#16A34A", barra=p_tot),
-                  unsafe_allow_html=True)
-s[2].markdown(kpi("DISTRITOS", f"{sc['UBIGEO'].nunique():,}", "en esta selección", "#4ADE80"), unsafe_allow_html=True)
-s[3].markdown(kpi("INTERVENCIONES", sc["KIT"].nunique(), "en esta selección", "#A3E635"), unsafe_allow_html=True)
+benef_sel = sc["PROG"].sum()
+av_sel = sc["AV"].sum()
+p_sc = pct(av_sel, benef_sel) if HAY_AV else 100.0
+s[0].markdown(kpi("BENEFICIARIOS ALCANZADOS", f"{benef_sel:,.0f}",
+                  "en la selección actual", "#0D9488"), unsafe_allow_html=True)
+s[1].markdown(kpi("CUMPLIMIENTO DE METAS", f"{p_sc:.1f}%",
+                  "de la meta prevista en esta selección", COLOR_ESTADO[estado(p_sc)], barra=p_sc),
+              unsafe_allow_html=True)
+s[2].markdown(kpi("DISTRITOS BENEFICIADOS", f"{sc['UBIGEO'].nunique():,}",
+                  "en la selección actual", "#4ADE80"), unsafe_allow_html=True)
+s[3].markdown(kpi("TIPOS DE INTERVENCIÓN", f"{sc['KIT'].nunique():,}",
+                  "en la selección actual", "#A3E635"), unsafe_allow_html=True)
 st.write("")
 
 clave = "|".join(ruta + [kit_sel])
