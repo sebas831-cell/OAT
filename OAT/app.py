@@ -342,10 +342,29 @@ def mapa(res, key, seleccionable=True):
         except Exception:
             pass
 
-    fig.update_layout(height=ALTO, margin=dict(t=10, b=0, l=0, r=0), paper_bgcolor="#FFFFFF",
-                      showlegend=HAY_AV,
-                      legend=dict(title="Cumplimiento", orientation="h", y=0.01, x=0.01,
-                                  bgcolor="rgba(255,255,255,.85)"))
+    # La leyenda de Plotly solo incluye categorías presentes en los datos.
+    # Agregamos trazas invisibles para mostrar siempre las cuatro categorías.
+    existentes = {tr.name for tr in fig.data}
+    tipo_mapa = type(fig.data[0])
+    for orden, nombre in enumerate(ORDEN_ESTADO):
+        if nombre not in existentes:
+            fig.add_trace(tipo_mapa(
+                lat=[None], lon=[None], mode="markers", name=nombre,
+                marker=dict(size=11, color=COLOR_ESTADO[nombre]),
+                showlegend=True, hoverinfo="skip", legendrank=orden,
+            ))
+    for tr in fig.data:
+        if tr.name in ORDEN_ESTADO:
+            tr.legendrank = ORDEN_ESTADO.index(tr.name)
+            tr.showlegend = True
+
+    fig.update_layout(
+        height=ALTO, margin=dict(t=10, b=42, l=0, r=0),
+        paper_bgcolor="#FFFFFF", showlegend=True,
+        legend=dict(title=None, orientation="h", x=0.01, xanchor="left",
+                    y=0, yanchor="bottom", bgcolor="rgba(255,255,255,0.94)",
+                    font=dict(size=11), traceorder="normal"),
+    )
     return chart(fig, key, seleccionable)
 
 
@@ -436,8 +455,6 @@ st.caption("ℹ️ Beneficiarios = unidades de atención de cada intervención (
 
 seccion("⭐ Resultados por territorio e intervención")
 st.caption("Selecciona un territorio o una intervención para conocer sus resultados. Haz clic en el mapa o las barras para profundizar.")
-st.markdown(leyenda_semaforo(), unsafe_allow_html=True)
-
 ruta = st.session_state.setdefault("ruta", [])
 
 
